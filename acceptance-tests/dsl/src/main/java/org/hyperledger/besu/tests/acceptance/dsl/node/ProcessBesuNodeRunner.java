@@ -18,7 +18,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.hyperledger.besu.cli.options.TransactionPoolOptions;
-import org.hyperledger.besu.cli.options.stable.DataStorageOptions;
+import org.hyperledger.besu.cli.options.storage.DataStorageOptions;
 import org.hyperledger.besu.cli.options.unstable.NetworkingOptions;
 import org.hyperledger.besu.ethereum.api.jsonrpc.ipc.JsonRpcIpcConfiguration;
 import org.hyperledger.besu.ethereum.eth.transactions.ImmutableTransactionPoolConfiguration;
@@ -449,6 +449,11 @@ public class ProcessBesuNodeRunner implements BesuNodeRunner {
     final String level = System.getProperty("root.log.level");
     if (level != null) {
       params.add("--logging=" + level);
+    }
+
+    if (!node.getRequestedPlugins().isEmpty()) {
+      params.add(
+          "--plugins=" + node.getRequestedPlugins().stream().collect(Collectors.joining(",")));
     }
 
     params.addAll(node.getRunCommand());

@@ -39,6 +39,7 @@ import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.ImmutableMiningParameters;
 import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.plugins.PluginConfiguration;
+import org.hyperledger.besu.ethereum.core.plugins.PluginInfo;
 import org.hyperledger.besu.ethereum.eth.EthProtocolConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
 import org.hyperledger.besu.ethereum.eth.transactions.BlobCacheModule;
@@ -53,6 +54,7 @@ import org.hyperledger.besu.ethereum.trie.diffbased.bonsai.cache.BonsaiCachedMer
 import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.MetricCategoryRegistryImpl;
 import org.hyperledger.besu.metrics.MetricsSystemModule;
 import org.hyperledger.besu.metrics.ObservableMetricsSystem;
 import org.hyperledger.besu.metrics.prometheus.MetricsConfiguration;
@@ -70,6 +72,7 @@ import org.hyperledger.besu.plugin.services.StorageService;
 import org.hyperledger.besu.plugin.services.TransactionPoolValidatorService;
 import org.hyperledger.besu.plugin.services.TransactionSelectionService;
 import org.hyperledger.besu.plugin.services.TransactionSimulationService;
+import org.hyperledger.besu.plugin.services.metrics.MetricCategoryRegistry;
 import org.hyperledger.besu.plugin.services.storage.rocksdb.RocksDBPlugin;
 import org.hyperledger.besu.services.BesuConfigurationImpl;
 import org.hyperledger.besu.services.BesuEventsImpl;
@@ -303,6 +306,12 @@ public class ThreadBesuNodeRunner implements BesuNodeRunner {
     }
 
     @Provides
+    @Named("RequestedPlugins")
+    public List<String> provideRequestedPlugins() {
+      return toProvide.getRequestedPlugins();
+    }
+
+    @Provides
     Path provideDataDir() {
       return toProvide.homeDirectory();
     }
@@ -389,6 +398,12 @@ public class ThreadBesuNodeRunner implements BesuNodeRunner {
       retval.init(blockchain, transactionSimulator);
       return retval;
     }
+
+    @Provides
+    @Singleton
+    MetricCategoryRegistryImpl provideMetricCategoryRegistry() {
+      return new MetricCategoryRegistryImpl();
+    }
   }
 
   @Module
@@ -469,7 +484,10 @@ public class ThreadBesuNodeRunner implements BesuNodeRunner {
         final RpcEndpointServiceImpl rpcEndpointServiceImpl,
         final BesuConfiguration commonPluginConfiguration,
         final PermissioningServiceImpl permissioningService,
-        final @Named("ExtraCLIOptions") List<String> extraCLIOptions) {
+        final MetricCategoryRegistryImpl metricCategoryRegistry,
+        final MetricsSystem metricsSystem,
+        final @Named("ExtraCLIOptions") List<String> extraCLIOptions,
+        final @Named("RequestedPlugins") List<String> requestedPlugins) {
       final CommandLine commandLine = new CommandLine(CommandSpec.create());
       final BesuPluginContextImpl besuPluginContext = new BesuPluginContextImpl();
       besuPluginContext.addService(StorageService.class, storageService);
@@ -484,6 +502,8 @@ public class ThreadBesuNodeRunner implements BesuNodeRunner {
           TransactionSimulationService.class, transactionSimulationServiceImpl);
       besuPluginContext.addService(BlockchainService.class, blockchainServiceImpl);
       besuPluginContext.addService(BesuConfiguration.class, commonPluginConfiguration);
+      besuPluginContext.addService(MetricCategoryRegistry.class, metricCategoryRegistry);
+      besuPluginContext.addService(MetricsSystem.class, metricsSystem);
 
       final Path pluginsPath;
       final String pluginDir = System.getProperty("besu.plugins.dir");
@@ -504,7 +524,10 @@ public class ThreadBesuNodeRunner implements BesuNodeRunner {
       besuPluginContext.addService(PrivacyPluginService.class, new PrivacyPluginServiceImpl());
 
       besuPluginContext.initialize(
-          new PluginConfiguration.Builder().pluginsDir(pluginsPath).build());
+          new PluginConfiguration.Builder()
+              .pluginsDir(pluginsPath)
+              .requestedPlugins(requestedPlugins.stream().map(PluginInfo::new).toList())
+              .build());
       besuPluginContext.registerPlugins();
       commandLine.parseArgs(extraCLIOptions.toArray(new String[0]));
 
